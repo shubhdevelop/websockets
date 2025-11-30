@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>WebSocket Test</title>
+        <style>
+            body {
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    "Segoe UI",
+                    Roboto,
+                    "Helvetica Neue",
+                    Arial;
+                padding: 20px;
+                max-width: 720px;
+            }
+            .status {
+                margin-bottom: 12px;
+            }
+            .log {
+                border: 1px solid #ddd;
+                padding: 10px;
+                height: 260px;
+                overflow: auto;
+                background: #fafafa;
+                white-space: pre-wrap;
+            }
+            input[type="text"] {
+                width: 60%;
+                padding: 6px;
+                margin-right: 8px;
+            }
+            button {
+                padding: 6px 10px;
+            }
+            .controls {
+                margin-top: 12px;
+            }
+            .meta {
+                color: #666;
+                font-size: 13px;
+                margin-top: 8px;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>WebSocket Test Client</h2>
+        <div class="status">
+            Status: <strong id="status">disconnected</strong>
+        </div>
+
+        <div class="log" id="log"></div>
+
+        <div class="controls">
+            <input
+                type="text"
+                id="payload"
+                placeholder="Type a message (text) to send"
+            />
+            <button id="sendBtn" disabled>Send</button>
+            <button id="closeBtn" disabled>Close</button>
+            <button id="reconnectBtn">Connect</button>
+        </div>
+
+        <div class="meta">Connecting to: <code id="url"></code></div>
+
+        <script>
+            (function () {
+                const host = location.hostname || "localhost";
+                // change port/path here if your server differs
+                const wsUrl = `ws://${host}:8080/ws`;
+                document.getElementById("url").textContent = wsUrl;
+
+                let ws = null;
+                const statusEl = document.getElementById("status");
+                const logEl = document.getElementById("log");
+                const sendBtn = document.getElementById("sendBtn");
+                const closeBtn = document.getElementById("closeBtn");
+                const reconnectBtn = document.getElementById("reconnectBtn");
+                const payloadInput = document.getElementById("payload");
+
+                function log(...args) {
+                    const time = new Date().toISOString().substr(11, 8);
+                    logEl.textContent +=
+                        `[${time}] ` +
+                        args
+                            .map((a) =>
+                                typeof a === "string" ? a : JSON.stringify(a),
+                            )
+                            .join(" ") +
+                        "\n";
+                    logEl.scrollTop = logEl.scrollHeight;
+                }
+
+                function setStatus(s) {
+                    statusEl.textContent = s;
+                }
+
+                function connect() {
+                    if (ws) {
+                        log("Already have a websocket instance");
+                        return;
+                    }
+                    setStatus("connecting");
+                    log("Attempting WebSocket ->", wsUrl);
+                    try {
+                        ws = new WebSocket(wsUrl);
+                    } catch (err) {
+                        log("WebSocket constructor error:", err);
+                        setStatus("error");
+                        ws = null;
+                        return;
+                    }
+
+                    ws.binaryType = "arraybuffer"; // important if server sends raw bytes
+
+                    ws.addEventListener("open", () => {
+                        setStatus("open");
+                        log("OPEN");
+                        sendBtn.disabled = false;
+                        closeBtn.disabled = false;
+                        reconnectBtn.disabled = true;
+                    });
+
+                    ws.addEventListener("message", (ev) => {
+                        // If server sends raw bytes, show hex; if string, show text.
+                        if (ev.data instanceof ArrayBuffer) {
+                            const bytes = new Uint8Array(ev.data);
+                            const hex = Array.from(bytes)
+                                .map((b) => b.toString(16).padStart(2, "0"))
+                                .join(" ");
+                            log("RECV (binary):", hex);
+                        } else {
+                            log("RECV (text):", ev.data);
+                        }
+                    });
+
+                    ws.addEventListener("error", (ev) => {
+                        log("ERROR", ev);
+                        setStatus("error");
+                    });
+
+                    ws.addEventListener("close", (ev) => {
+                        log(
+                            "CLOSE",
+                            `code=${ev.code}`,
+                            `reason=${ev.reason || ""}`,
+                        );
+                        setStatus("closed");
+                        sendBtn.disabled = true;
+                        closeBtn.disabled = true;
+                        reconnectBtn.disabled = false;
+                        ws = null;
+                    });
+                }
+
+                sendBtn.addEventListener("click", () => {
+                    if (!ws || ws.readyState !== WebSocket.OPEN)
+                        return log("not open");
+                    const v = payloadInput.value || "hello server";
+                    try {
+                        ws.send(v);
+                        log("SENT:", v);
+                    } catch (err) {
+                        log("send error", err);
+                    }
+                });
+
+                closeBtn.addEventListener("click", () => {
+                    if (!ws) return;
+                    ws.close(1000, "client closing");
+                });
+
+                reconnectBtn.addEventListener("click", () => {
+                    if (ws) {
+                        log("closing existing websocket first");
+                        ws.close();
+                        // will set ws = null on close event; user can click reconnect again
+                        return;
+                    }
+                    connect();
+                });
+
+                // try to connect automatically on page load
+                connect();
+
+                // also allow Enter key to send
+                payloadInput.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter") sendBtn.click();
+                });
+            })();
+        </script>
+    </body>
+</html>
