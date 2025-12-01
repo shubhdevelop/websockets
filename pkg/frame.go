@@ -231,9 +231,9 @@ func ParseMessage(conn *WsConnection) *Message {
 				conn.Conn.Close()
 				return nil
 			case 0x9:
-				pongFrame := NewPongFrame("Replying to Ping Frame")
-				conn.Conn.Write(pongFrame.ComposeNetworkFrame())
-				return nil
+				pongFrame := NewPongFrame("replying to ping frame")
+				conn.Conn.Write(pongFrame.ComponseNetworkFrame())
+				continue
 			case 0xA:
 			default:
 				if message == nil {
