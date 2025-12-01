@@ -232,7 +232,7 @@ func ParseMessage(conn *WsConnection) *Message {
 				return nil
 			case 0x9:
 				pongFrame := NewPongFrame("replying to ping frame")
-				conn.Conn.Write(pongFrame.ComponseNetworkFrame())
+				conn.Conn.Write(pongFrame.ComposeNetworkFrame())
 				continue
 			case 0xA:
 			default:
