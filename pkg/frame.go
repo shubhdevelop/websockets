@@ -101,7 +101,7 @@ func ParseNetworkFrame(conn *WsConnection) (*Frame, []error) {
 	return frame, errors
 }
 
-func (f *Frame) ComponseNetworkFrame() []byte {
+func (f *Frame) ComposeNetworkFrame() []byte {
 	frame := make([]byte, 0, 14)
 	b0 := byte(0)
 	if f.fin {
@@ -219,13 +219,16 @@ func ParseMessage(conn *WsConnection) *Message {
 	for {
 		frame, errs := ParseNetworkFrame(conn)
 		if errs != nil {
-			conn.Conn.Write([]byte("Error parsing the frame"))
+			closeFrame := NewCloseFrame("Malfunctioned frames deteched closing the connection")
+			conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+			conn.Conn.Close()
 		}
 		if frame.fin == true {
 			switch frame.Opcode {
 			case 0x8:
-				closeFrame := NewCloseFrame("replying to closing frame")
-				conn.Conn.Write(closeFrame.ComponseNetworkFrame())
+				closeFrame := NewCloseFrame("Closing Frame Detected: closign the connection")
+				conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+				conn.Conn.Close()
 				return nil
 			case 0x9:
 				pongFrame := NewPongFrame("replying to ping frame")
@@ -246,8 +249,8 @@ func ParseMessage(conn *WsConnection) *Message {
 			switch frame.Opcode {
 			case 0x1:
 				if message != nil {
-					closeFrame := NewCloseFrame("can't have consecutive frame with opcode of either 0x1 and 0x2")
-					conn.Conn.Write(closeFrame.ComponseNetworkFrame())
+					closeFrame := NewCloseFrame("Cannot start a new message while processing a fragmented message")
+					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
 					return nil
 				} else {
 					message = &Message{}
@@ -256,8 +259,8 @@ func ParseMessage(conn *WsConnection) *Message {
 				}
 			case 0x2:
 				if message != nil {
-					closeFrame := NewCloseFrame("can't have consecutive frame with opcode of either 0x1 and 0x2")
-					conn.Conn.Write(closeFrame.ComponseNetworkFrame())
+					closeFrame := NewCloseFrame("Cannot start a new message while processing a fragmented message")
+					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
 					return nil
 				} else {
 					message = &Message{}
