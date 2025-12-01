@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Upgrade(w, r)
 		if err != nil {
@@ -16,24 +17,7 @@ func main() {
 			log.Printf("upgrade error: %v", err)
 			return
 		}
-		fmt.Println("WebSocket handshake complete")
-
-		for {
-			frame, err := websocket.ParseNetworkFrame(conn)
-			fmt.Println(string(frame.PayloadData))
-			if err != nil {
-				fmt.Println("client disconnected")
-				return
-			}
-			if frame.Opcode == 0x09 {
-				frame := websocket.NewPongFrame("reply to ping")
-				conn.Conn.Write(frame.ComponseNetworkFrame())
-				continue
-			}
-			frame.Mask = false
-			fmt.Println(string(frame.PayloadData))
-			conn.Conn.Write(frame.ComponseNetworkFrame())
-		}
+		go conn.HandleConnection()
 	})
 
 	fmt.Println("Listening on :8080")
