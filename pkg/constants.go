@@ -24,3 +24,7 @@ const (
 	OP_PING_FRAME         = 0x9
 	OP_PONG_Frame         = 0xA
 )
+
+const (
+	MaxFrameSize = 4096
+)

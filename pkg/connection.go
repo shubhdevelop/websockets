@@ -1,6 +1,9 @@
 package websocket
 
-import "net"
+import (
+	"fmt"
+	"net"
+)
 
 type WsConnection struct {
 	Conn           net.Conn // Raw TCP connection
@@ -9,4 +12,12 @@ type WsConnection struct {
 
 func newWsConnection() WsConnection {
 	return WsConnection{}
+}
+
+func (ws *WsConnection) HandleConnection() {
+	defer ws.Conn.Close()
+	for {
+		message := ParseMessage(ws)
+		fmt.Println(string(message.ApplicationData))
+	}
 }
