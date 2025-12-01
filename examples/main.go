@@ -19,19 +19,20 @@ func main() {
 		fmt.Println("WebSocket handshake complete")
 
 		for {
-			b := make([]byte, 2)
-			_, err := conn.Conn.Read(b)
+			frame, err := websocket.ParseNetworkFrame(conn)
+			fmt.Println(string(frame.PayloadData))
 			if err != nil {
 				fmt.Println("client disconnected")
 				return
 			}
-			frame := websocket.NewFrame(b)
-			_, err = conn.Conn.Write(frame.ComponseNetworkFrame())
-			if err != nil {
-				fmt.Println("error writing to client", err)
-				return
+			if frame.Opcode == 0x09 {
+				frame := websocket.NewPongFrame("reply to ping")
+				conn.Conn.Write(frame.ComponseNetworkFrame())
+				continue
 			}
-			fmt.Printf("received raw bytes: % x\n", b)
+			frame.Mask = false
+			fmt.Println(string(frame.PayloadData))
+			conn.Conn.Write(frame.ComponseNetworkFrame())
 		}
 	})
 
