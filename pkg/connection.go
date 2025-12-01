@@ -18,6 +18,9 @@ func (ws *WsConnection) HandleConnection() {
 	defer ws.Conn.Close()
 	for {
 		message := ParseMessage(ws)
+		if message == nil {
+			continue
+		}
 		fmt.Println(string(message.ApplicationData))
 	}
 }
