@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/binary"
 	"io"
+	"log"
 )
 
 type Frame struct {
@@ -222,6 +223,7 @@ func ParseMessage(conn *WsConnection) *Message {
 			closeFrame := NewCloseFrame("Malfunctioned frames deteched closing the connection")
 			conn.Conn.Write(closeFrame.ComposeNetworkFrame())
 			conn.Conn.Close()
+			return nil
 		}
 		if frame.fin == true {
 			switch frame.Opcode {
@@ -237,10 +239,23 @@ func ParseMessage(conn *WsConnection) *Message {
 			case 0xA:
 			default:
 				if message == nil {
+					if frame.Opcode == 0x0 {
+						closeFrame := NewCloseFrame("Orphan Continuation Frame")
+						conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+						conn.Conn.Close()
+						return nil
+					}
 					message = &Message{}
 					if frame.Opcode == 0x2 {
 						message.binary = true
 					}
+				}
+				if len(message.ApplicationData)+len(frame.PayloadData) > MaxMessageSize {
+					log.Println("maximum size of the messsage exceeded")
+					closeFrame := NewCloseFrame("Maximum message size exceeded")
+					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					conn.Conn.Close()
+					return nil
 				}
 				message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
 				return message
@@ -255,6 +270,13 @@ func ParseMessage(conn *WsConnection) *Message {
 				} else {
 					message = &Message{}
 					message.binary = false
+					if len(message.ApplicationData)+len(frame.PayloadData) > MaxMessageSize {
+						log.Println("maximum size of the messsage exceeded")
+						closeFrame := NewCloseFrame("Maximum message size exceeded")
+						conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+						conn.Conn.Close()
+						return nil
+					}
 					message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
 				}
 			case 0x2:
@@ -265,10 +287,28 @@ func ParseMessage(conn *WsConnection) *Message {
 				} else {
 					message = &Message{}
 					message.binary = true
-
+					if len(message.ApplicationData)+len(frame.PayloadData) > MaxMessageSize {
+						log.Println("maximum size of the messsage exceeded")
+						closeFrame := NewCloseFrame("Maximum message size exceeded")
+						conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+						conn.Conn.Close()
+						return nil
+					}
 					message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
 				}
 			case 0x0:
+				if message == nil {
+					closeFrame := NewCloseFrame("Orphan Continuation")
+					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					return nil
+				}
+				if len(message.ApplicationData)+len(frame.PayloadData) > MaxMessageSize {
+					log.Println("maximum size of the messsage exceeded")
+					closeFrame := NewCloseFrame("Maximum message size exceeded")
+					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					conn.Conn.Close()
+					return nil
+				}
 				message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
 			}
 		}
