@@ -20,7 +20,7 @@ var Origin map[string]bool = map[string]bool{
 type WsUpgrade struct {
 }
 
-func Upgrade(w http.ResponseWriter, r *http.Request) (*WsConnection, error) {
+func (ws *WsUpgrade) Upgrade(w http.ResponseWriter, r *http.Request) (*WsConnection, error) {
 	wsConn := newWsConnection()
 	var answerKey string
 	if r.Method != http.MethodGet {
