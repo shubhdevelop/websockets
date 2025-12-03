@@ -280,6 +280,7 @@ func ParseMessage(conn *WsConnection) *Message {
 				if message == nil {
 					closeFrame := NewCloseFrame("Orphan Continuation Frame")
 					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					conn.Conn.Close()
 					return nil
 				}
 				checkAndAppendPayload(message, frame, conn)
