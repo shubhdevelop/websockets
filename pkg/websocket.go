@@ -5,4 +5,10 @@ type Websocket struct {
 	Broadcast   chan []byte
 	register    chan *WsConnection
 	unregister  chan *WsConnection
+
+	WsUpgrader WsUpgrade
+}
+
+func NewWebSocket() *Websocket {
+	return &Websocket{}
 }

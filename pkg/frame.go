@@ -2,7 +2,9 @@ package websocket
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
+	"log"
 )
 
 type Frame struct {
@@ -56,6 +58,10 @@ func ParseNetworkFrame(conn *WsConnection) (*Frame, []error) {
 	frame.Mask = (p[0] & 0x80) != 0
 	payloadLen7 := p[0] & 0x7F
 
+	if (frame.Opcode >= 0x3 && frame.Opcode <= 0x7) || (frame.Opcode >= 0xB && frame.Opcode <= 0xF) {
+		return nil, append(errors, fmt.Errorf("reserved opcode: 0x%X", frame.Opcode))
+	}
+
 	// PAYLOAD LENGTH
 	if payloadLen7 < 126 {
 		frame.payloadLen = int64(payloadLen7)
@@ -73,6 +79,15 @@ func ParseNetworkFrame(conn *WsConnection) (*Frame, []error) {
 			return nil, append(errors, err)
 		}
 		frame.payloadLen = int64(binary.BigEndian.Uint64(lenBuf))
+	}
+
+	if frame.Opcode >= 0x8 { // Control frame
+		if frame.payloadLen > 125 { // Changed from payloadLen7
+			return nil, append(errors, fmt.Errorf("control frame payload too large: %d", frame.payloadLen))
+		}
+		if !frame.fin {
+			return nil, append(errors, fmt.Errorf("control frame must not be fragmented"))
+		}
 	}
 
 	// MASK KEY
@@ -125,14 +140,14 @@ func (f *Frame) ComposeNetworkFrame() []byte {
 	if f.payloadLen <= 125 {
 		b1 |= byte(f.payloadLen)
 		frame = append(frame, b1)
-	} else if f.payloadLen <= 0xFFF {
+	} else if f.payloadLen <= 0xFFFF {
 		b1 |= 126
 		frame = append(frame, b1)
 		buf := make([]byte, 2)
 		binary.BigEndian.PutUint16(buf, uint16(f.payloadLen))
 		frame = append(frame, buf...)
 	} else {
-		b1 |= 126
+		b1 |= 127
 		frame = append(frame, b1)
 		buf := make([]byte, 8)
 		binary.BigEndian.PutUint64(buf, uint64(f.payloadLen))
@@ -180,7 +195,7 @@ func NewCloseFrame(body string) *Frame {
 	data = []byte(body)
 
 	return &Frame{
-		fin:         false,
+		fin:         true,
 		Opcode:      0x8, // Opcode for Close Frame
 		Mask:        false,
 		payloadLen:  int64(len(data)),
@@ -219,9 +234,13 @@ func ParseMessage(conn *WsConnection) *Message {
 	for {
 		frame, errs := ParseNetworkFrame(conn)
 		if errs != nil {
+			for _, v := range errs {
+				log.Println(v.Error())
+			}
 			closeFrame := NewCloseFrame("Malfunctioned frames deteched closing the connection")
 			conn.Conn.Write(closeFrame.ComposeNetworkFrame())
 			conn.Conn.Close()
+			return nil
 		}
 		if frame.fin == true {
 			switch frame.Opcode {
@@ -235,14 +254,25 @@ func ParseMessage(conn *WsConnection) *Message {
 				conn.Conn.Write(pongFrame.ComposeNetworkFrame())
 				continue
 			case 0xA:
+				// will be implemented later for now just log and continue
+				fmt.Println("will be implemented")
+				continue
 			default:
 				if message == nil {
+					if frame.Opcode == 0x0 {
+						closeFrame := NewCloseFrame("Orphan Continuation Frame")
+						conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+						conn.Conn.Close()
+						return nil
+					}
 					message = &Message{}
 					if frame.Opcode == 0x2 {
 						message.binary = true
 					}
 				}
-				message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
+				if !checkAndAppendPayload(message, frame, conn) {
+					return nil
+				}
 				return message
 			}
 		} else {
@@ -251,26 +281,64 @@ func ParseMessage(conn *WsConnection) *Message {
 				if message != nil {
 					closeFrame := NewCloseFrame("Cannot start a new message while processing a fragmented message")
 					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					conn.Conn.Close()
 					return nil
 				} else {
 					message = &Message{}
 					message.binary = false
-					message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
+					if !checkAndAppendPayload(message, frame, conn) {
+						return nil
+					}
 				}
+			case 0x8:
+				closeFrame := NewCloseFrame("Closing Frame Detected: closign the connection")
+				conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+				conn.Conn.Close()
+				return nil
+			case 0x9:
+				pongFrame := NewPongFrame("replying to ping frame")
+				conn.Conn.Write(pongFrame.ComposeNetworkFrame())
+				continue
+			case 0xA:
+				// will be implemented later for now just log and continue
+				fmt.Println("will be implemented")
+				continue
 			case 0x2:
 				if message != nil {
 					closeFrame := NewCloseFrame("Cannot start a new message while processing a fragmented message")
 					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					conn.Conn.Close()
 					return nil
 				} else {
 					message = &Message{}
 					message.binary = true
-
-					message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
+					if !checkAndAppendPayload(message, frame, conn) {
+						return nil
+					}
 				}
 			case 0x0:
-				message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
+				if message == nil {
+					closeFrame := NewCloseFrame("Orphan Continuation Frame")
+					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					conn.Conn.Close()
+					return nil
+				}
+				if !checkAndAppendPayload(message, frame, conn) {
+					return nil
+				}
 			}
 		}
 	}
+}
+
+func checkAndAppendPayload(message *Message, frame *Frame, conn *WsConnection) bool {
+	if int64(len(message.ApplicationData))+int64(len(frame.PayloadData)) > int64(MaxMessageSize) {
+		log.Printf("maximum size of the message exceeded from %v", conn.Conn.RemoteAddr())
+		closeFrame := NewCloseFrame(fmt.Sprintf("%d Maximum message size exceeded\n", MESSAGE_TOO_BIG))
+		conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+		conn.Conn.Close()
+		return false
+	}
+	message.ApplicationData = append(message.ApplicationData, frame.PayloadData...)
+	return true
 }
