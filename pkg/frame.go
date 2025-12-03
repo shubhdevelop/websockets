@@ -300,6 +300,7 @@ func ParseMessage(conn *WsConnection) *Message {
 				if message == nil {
 					closeFrame := NewCloseFrame("Orphan Continuation")
 					conn.Conn.Write(closeFrame.ComposeNetworkFrame())
+					conn.Conn.Close()
 					return nil
 				}
 				if len(message.ApplicationData)+len(frame.PayloadData) > MaxMessageSize {
