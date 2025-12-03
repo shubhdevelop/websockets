@@ -27,5 +27,5 @@ const (
 
 const (
 	MaxFrameSize   = 4096
-	MaxMessageSize = 1024
+	MaxMessageSize = 1024 * 1024
 )
