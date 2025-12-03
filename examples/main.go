@@ -11,7 +11,8 @@ import (
 func main() {
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Upgrade(w, r)
+		socket := websocket.NewWebSocket()
+		conn, err := socket.WsUpgrader.Upgrade(w, r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			log.Printf("upgrade error: %v", err)
