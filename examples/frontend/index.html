@@ -141,6 +141,10 @@
                         setStatus("error");
                     });
 
+                    ws.addEventListener("ping", (ev) => {
+                        log("PING", ev);
+                    });
+
                     ws.addEventListener("close", (ev) => {
                         log(
                             "CLOSE",
